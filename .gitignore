@@ -1,0 +1,27 @@
+.DS_Store
+
+# Python environments and generated state
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Astro / Node generated state
+node_modules/
+dist/
+.astro/
+
+# Locally provisioned model weights
+backend/models/*.gguf
+
+# Downloaded benchmark data and timestamped run output
+backend/evaluation/data/
+backend/evaluation/results/scifact_results_20*.json
+backend/evaluation/results/scifact_lexical_results_20*.json

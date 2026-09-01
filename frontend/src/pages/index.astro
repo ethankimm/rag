@@ -1,0 +1,11 @@
+---
+import ChatApp from "../components/ChatApp";
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Colgate Knowledge Chat"
+  description="Ask grounded questions across the internal knowledge base."
+>
+  <ChatApp client:load />
+</BaseLayout>

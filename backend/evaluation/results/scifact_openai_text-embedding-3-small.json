@@ -1,0 +1,24 @@
+{
+  "dataset": "beir/scifact",
+  "split": "test",
+  "run": {
+    "embedding_model": "text-embedding-3-small",
+    "semantic_weight": 0.5,
+    "lexical_weight": 0.5,
+    "retrieval_depth": 100,
+    "top_k": 10
+  },
+  "metrics": {
+    "HitRate@1": 0.580,
+    "HitRate@5": 0.810,
+    "HitRate@10": 0.883,
+    "Recall@10": 0.869,
+    "Recall@20": 0.905,
+    "Recall@30": 0.929,
+    "Recall@100": 0.977,
+    "NDCG@10": 0.721,
+    "MAP@10": 0.668
+  },
+  "recorded_at": "2026-08-12",
+  "commit": "edc1e58"
+}
