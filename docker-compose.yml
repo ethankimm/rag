@@ -1,0 +1,27 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
+    image: rag-postgres:pg17-pg_textsearch-1.4.0
+    container_name: rag-postgres
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_textsearch
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - rag_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rag_pgdata:
