@@ -97,7 +97,10 @@ Load and index the markdown corpus:
 
 Run a manual RAG query smoke test:
 
-    uv run python -m backend.rag
+    make rag-smoke
+
+Direct `uv run python -m backend.rag` invocation requires PostgreSQL and the
+Model Server to be running already.
 
 Optional cross-encoder reranking (off by default). Download the reranker GGUF
 into `models/`, serve it, then set `RERANK_ENABLED=1`. Reranking pools over the
@@ -108,7 +111,7 @@ pair (the 512-token default 500s on long docs):
 
 Run the backend API:
 
-    uv run uvicorn backend.api:app --reload
+    make dev
 
 Run the tests:
 

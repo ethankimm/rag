@@ -18,10 +18,10 @@ owned by their callers.
 
 This implements [issue #3](https://github.com/ethankimm/rag/issues/3).
 Persistent server launcher commands are provided by
-[issue #4](https://github.com/ethankimm/rag/issues/4). Production caller
-migration remains a later part of
-[issue #2](https://github.com/ethankimm/rag/issues/2); existing entry points do
-not yet use this session.
+[issue #4](https://github.com/ethankimm/rag/issues/4). FastAPI and the RAG smoke
+command use this session through
+[issue #5](https://github.com/ethankimm/rag/issues/5). Ingestion and evaluation
+migration remains in [issue #6](https://github.com/ethankimm/rag/issues/6).
 
 ## Persistent server commands
 
@@ -32,6 +32,9 @@ processes:
 make model-server-up
 make model-server-down
 ```
+
+`make dev` and `make rag-smoke` run `model-server-up` before application work.
+Direct module or server commands require the Model Server to be running already.
 
 The launcher stores verified process identity in `.runtime/model-server.json`
 and writes current-run server output to `.runtime/model-server.log`, replacing

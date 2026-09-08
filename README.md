@@ -66,8 +66,8 @@ and frontend together:
 make app-dev
 ```
 
-The local Model Server is a persistent repository-owned process. Start it once
-before application work and stop it when finished:
+The local Model Server is a persistent repository-owned process. Standard Make
+commands start or reuse it automatically. Stop it when finished:
 
 ```bash
 make model-server-up
@@ -87,7 +87,7 @@ origin during local development. For separate processes, use the commands below.
 Run the FastAPI server from the repo root:
 
 ```bash
-uv run uvicorn backend.api:app --reload
+make dev
 ```
 
 FastAPI lifespan management starts and closes the local model client, PostgreSQL

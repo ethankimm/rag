@@ -5,12 +5,15 @@ from __future__ import annotations
 import inspect
 from collections.abc import Sequence
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import cast
 
+import pytest
 from fastapi.testclient import TestClient
 
 import backend.api as api
 from backend.agents.graph import ConversationMessage, RagAnswer, RagWorkflow
+from backend.local_model_runtime import LocalModelStartupError
 
 
 class FakeWorkflow:
@@ -72,6 +75,84 @@ def test_lifespan_owns_resources_and_chat_forwards_history(monkeypatch) -> None:
             ),
         )
     ]
+
+
+def test_application_resources_uses_validated_local_model_runtime(monkeypatch) -> None:
+    lifecycle: list[str] = []
+    model_client = SimpleNamespace(config=SimpleNamespace(embedding_dimension=384))
+    generation_client = object()
+
+    @contextmanager
+    def fake_local_model_runtime():
+        lifecycle.append("models started")
+        yield model_client
+        lifecycle.append("models closed")
+
+    @contextmanager
+    def fake_search_store(*, embedding_dimension: int, verbose: bool):
+        assert embedding_dimension == 384
+        assert not verbose
+        lifecycle.append("store started")
+        yield SimpleNamespace(embedding_dimension=embedding_dimension)
+        lifecycle.append("store closed")
+
+    @contextmanager
+    def fake_openai(*, api_key: str):
+        assert api_key == "test-key"
+        lifecycle.append("generation started")
+        yield generation_client
+        lifecycle.append("generation closed")
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(api, "local_model_runtime", fake_local_model_runtime)
+    monkeypatch.setattr(api, "PgSearchStore", fake_search_store)
+    monkeypatch.setattr(api, "OpenAI", fake_openai)
+
+    with api.application_resources() as resources:
+        assert resources.workflow.retriever.model_client is model_client
+        assert resources.workflow.generation_client is generation_client
+        assert lifecycle == [
+            "models started",
+            "store started",
+            "generation started",
+        ]
+
+    assert lifecycle == [
+        "models started",
+        "store started",
+        "generation started",
+        "generation closed",
+        "store closed",
+        "models closed",
+    ]
+
+
+def test_runtime_startup_failure_prevents_api_resource_construction(
+    monkeypatch,
+) -> None:
+    cause = ConnectionError("model server unavailable")
+    startup_error = LocalModelStartupError("startup failed")
+
+    @contextmanager
+    def failed_runtime():
+        raise startup_error from cause
+        yield
+
+    def unexpected_construction(*args, **kwargs):
+        pytest.fail("Downstream resources must not be constructed")
+
+    monkeypatch.setattr(api, "local_model_runtime", failed_runtime)
+    monkeypatch.setattr(api, "PgSearchStore", unexpected_construction)
+    monkeypatch.setattr(api, "OpenAI", unexpected_construction)
+
+    with (
+        pytest.raises(LocalModelStartupError) as caught,
+        api.application_resources(),
+    ):
+        pytest.fail("Failed runtime must not yield application resources")
+
+    assert caught.value is startup_error
+    assert caught.value.__cause__ is cause
 
 
 def test_chat_remains_backward_compatible_without_history(monkeypatch) -> None:

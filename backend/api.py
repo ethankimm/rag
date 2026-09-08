@@ -6,7 +6,6 @@ import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, Request
@@ -15,11 +14,10 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, StringConstraints
 
 from backend.agents.graph import ConversationMessage, RagWorkflow
+from backend.local_model_runtime import local_model_runtime
 from backend.rag import get_required_env
 from backend.retrieval.hybrid_retriever import HybridRetriever
-from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG, ModelClient
 from backend.storage.pg_search_store import PgSearchStore
-from backend.utils.llama_server import ManagedLlamaServer
 
 
 @dataclass(frozen=True)
@@ -32,12 +30,10 @@ class AppResources:
 @contextmanager
 def application_resources() -> Iterator[AppResources]:
     """Start and cleanly release the model, database, and HTTP clients."""
-    models_dir = Path(__file__).resolve().parent / "models"
     with (
-        ManagedLlamaServer(models_dir=models_dir, port=8080),
-        ModelClient(DEFAULT_MODEL_CONFIG) as model_client,
+        local_model_runtime() as model_client,
         PgSearchStore(
-            embedding_dimension=DEFAULT_MODEL_CONFIG.embedding_dimension,
+            embedding_dimension=model_client.config.embedding_dimension,
             verbose=False,
         ) as search_store,
         OpenAI(api_key=get_required_env("OPENAI_API_KEY")) as generation_client,

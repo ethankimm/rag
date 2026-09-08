@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from openai import OpenAI
 
+import backend.rag as rag
 from backend.agents.graph import (
     DEFAULT_GENERATION_MODEL,
     NO_DATA_ANSWER,
@@ -22,6 +24,7 @@ from backend.agents.graph import (
     get_generation_model,
     rewrite_query,
 )
+from backend.local_model_runtime import LocalModelStartupError
 from backend.rag import answer_question, llm_call
 from backend.retrieval.hybrid_retriever import HybridRetriever
 from backend.storage.pg_search_store import SearchHit
@@ -317,3 +320,83 @@ def test_compatibility_wrappers_forward_history() -> None:
     assert result.answer == "Answer one"
     assert text == "Answer two"
     assert result.answer != NO_DATA_ANSWER
+
+
+def test_rag_smoke_uses_validated_local_model_runtime(monkeypatch, capsys) -> None:
+    lifecycle: list[str] = []
+    model_client = SimpleNamespace(config=SimpleNamespace(embedding_dimension=384))
+    generation_client = object()
+
+    @contextmanager
+    def fake_local_model_runtime():
+        lifecycle.append("models started")
+        yield model_client
+        lifecycle.append("models closed")
+
+    @contextmanager
+    def fake_search_store(*, embedding_dimension: int, verbose: bool):
+        assert embedding_dimension == 384
+        assert not verbose
+        lifecycle.append("store started")
+        yield SimpleNamespace(embedding_dimension=embedding_dimension)
+        lifecycle.append("store closed")
+
+    @contextmanager
+    def fake_openai(*, api_key: str):
+        assert api_key == "test-key"
+        lifecycle.append("generation started")
+        yield generation_client
+        lifecycle.append("generation closed")
+
+    def fake_llm_call(question, retriever, client):
+        assert question == rag.SMOKE_QUESTION
+        assert retriever.model_client is model_client
+        assert client is generation_client
+        lifecycle.append("question answered")
+        return "smoke answer"
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(rag, "local_model_runtime", fake_local_model_runtime)
+    monkeypatch.setattr(rag, "PgSearchStore", fake_search_store)
+    monkeypatch.setattr(rag, "OpenAI", fake_openai)
+    monkeypatch.setattr(rag, "llm_call", fake_llm_call)
+
+    rag.run_smoke()
+
+    assert lifecycle == [
+        "models started",
+        "store started",
+        "generation started",
+        "question answered",
+        "generation closed",
+        "store closed",
+        "models closed",
+    ]
+    assert capsys.readouterr().out == (
+        f"Question: {rag.SMOKE_QUESTION}\n\nsmoke answer\n"
+    )
+
+
+def test_runtime_startup_failure_prevents_smoke_resource_construction(
+    monkeypatch,
+) -> None:
+    cause = ConnectionError("model server unavailable")
+    startup_error = LocalModelStartupError("startup failed")
+
+    @contextmanager
+    def failed_runtime():
+        raise startup_error from cause
+        yield
+
+    def unexpected_construction(*args, **kwargs):
+        pytest.fail("Downstream resources must not be constructed")
+
+    monkeypatch.setattr(rag, "local_model_runtime", failed_runtime)
+    monkeypatch.setattr(rag, "PgSearchStore", unexpected_construction)
+    monkeypatch.setattr(rag, "OpenAI", unexpected_construction)
+
+    with pytest.raises(LocalModelStartupError) as caught:
+        rag.run_smoke()
+
+    assert caught.value is startup_error
+    assert caught.value.__cause__ is cause

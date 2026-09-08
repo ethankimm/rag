@@ -23,13 +23,13 @@ from backend.agents.graph import (
     get_float_env,
     get_generation_model,
 )
+from backend.local_model_runtime import local_model_runtime
 from backend.retrieval.hybrid_retriever import HybridRetriever
-from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG, ModelClient
 from backend.storage.pg_search_store import PgSearchStore
-from backend.utils.llama_server import ManagedLlamaServer
 
 BACKEND_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = BACKEND_ROOT.parent
+SMOKE_QUESTION = "What changed in the 2024 Q2 weight package count enhancements?"
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -82,6 +82,21 @@ def llm_call(
     ).answer
 
 
+def run_smoke() -> None:
+    """Run one interactive query through production resource assembly."""
+    with (
+        local_model_runtime() as model_client,
+        PgSearchStore(
+            embedding_dimension=model_client.config.embedding_dimension,
+            verbose=False,
+        ) as search_store,
+        OpenAI(api_key=get_required_env("OPENAI_API_KEY")) as generation_client,
+    ):
+        hybrid_retriever = HybridRetriever(search_store, model_client)
+        print(f"Question: {SMOKE_QUESTION}\n")
+        print(llm_call(SMOKE_QUESTION, hybrid_retriever, generation_client))
+
+
 __all__ = [
     "ConversationMessage",
     "DEFAULT_GENERATION_MODEL",
@@ -94,22 +109,9 @@ __all__ = [
     "get_generation_model",
     "get_required_env",
     "llm_call",
+    "run_smoke",
 ]
 
 
 if __name__ == "__main__":
-    MODELS_DIR = Path(__file__).resolve().parent / "models"
-
-    with (
-        ManagedLlamaServer(models_dir=MODELS_DIR, port=8080),
-        ModelClient(DEFAULT_MODEL_CONFIG) as local_models,
-        PgSearchStore(
-            embedding_dimension=DEFAULT_MODEL_CONFIG.embedding_dimension,
-            verbose=False,
-        ) as search_store,
-        OpenAI(api_key=get_required_env("OPENAI_API_KEY")) as generation_client,
-    ):
-        hybrid_retriever = HybridRetriever(search_store, local_models)
-        question = "What changed in the 2024 Q2 weight package count enhancements?"
-        print(f"Question: {question}\n")
-        print(llm_call(question, hybrid_retriever, generation_client))
+    run_smoke()
