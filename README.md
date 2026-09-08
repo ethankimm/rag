@@ -5,10 +5,11 @@ is an Astro + React frontend, Python/FastAPI, PostgreSQL with pgvector and
 pg_textsearch, local BGE-M3 embeddings and cross-encoder reranking, and OpenAI
 chat completion.
 
-Current architecture decisions are recorded in `docs/adr/`: ADR 0004 keeps the
-Git-only markdown corpus, ADR 0006 chooses the single Astro frontend, and ADR
-0009 chooses the local FastAPI/ChromaDB/OpenAI-compatible RAG backend. ADRs
-0001-0003 are superseded historical context.
+The external persistent Model Server lifecycle is recorded in
+[`ADR 0015`](docs/adr/0015-use-an-external-persistent-local-model-server.md).
+
+This is a single-installation application. Every locally available document is
+available to chat; there are no user or administrator roles.
 
 ## Local Setup
 
@@ -23,6 +24,14 @@ Copy the example environment file and add your local API value:
 ```bash
 cp .env.example .env
 ```
+
+`LOCAL_MODEL_BASE_URL`, `LOCAL_EMBEDDING_MODEL`,
+`LOCAL_RERANKING_MODEL`, and `LOCAL_EMBEDDING_DIMENSION` define the shared local
+model contract. See
+[`docs/local-model-runtime.md`](docs/local-model-runtime.md#configuration) for
+the canonical defaults and validation rules. Run `make model-server-down` before
+changing these values, then restart application processes. Standard Make commands
+start the server again with the new contract.
 
 If your organization stores these values in Vault, retrieve the secret value and
 paste the value into `.env`. Do not commit `.env`, real API keys, or personal
@@ -76,6 +85,13 @@ make model-server-down
 Startup reuses only the live process recorded in `.runtime/`. It rejects an
 untracked process on the configured port without terminating it. Server output
 remains in `.runtime/model-server.log`, including after startup failure.
+Startup prints `starting`, `waiting`, and `ready` status while the server loads.
+Application startup also reports embedding-model loading and readiness.
+
+`make model-server-down` verifies the recorded PID, executable, and process
+start time before sending a signal. It never stops a process discovered only by
+port. This safe shutdown may use `SIGKILL` only when the verified process does
+not exit during its five-second `SIGTERM` grace period.
 
 The Astro development server sends browser requests to `/api/chat` and proxies
 them to FastAPI at `http://127.0.0.1:8000/chat`. This keeps the browser on one
@@ -89,7 +105,7 @@ Run the FastAPI server from the repo root:
 make dev
 ```
 
-FastAPI lifespan management starts and closes the local model client, PostgreSQL
+FastAPI lifespan management opens and closes the local model client, PostgreSQL
 store, and generation client. The chat API runs at
 `http://127.0.0.1:8000/chat`.
 

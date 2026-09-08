@@ -16,12 +16,10 @@ exit, caller failure, or startup failure. It never starts, stops, adopts, or
 otherwise manages a Model Server. PostgreSQL and generation clients remain
 owned by their callers.
 
-This implements [issue #3](https://github.com/ethankimm/rag/issues/3).
-Persistent server launcher commands are provided by
-[issue #4](https://github.com/ethankimm/rag/issues/4). FastAPI and the RAG smoke
-command use this session through
-[issue #5](https://github.com/ethankimm/rag/issues/5). Ingestion and evaluation
-use it through [issue #6](https://github.com/ethankimm/rag/issues/6).
+This is the canonical configuration and operations reference for the Local
+Model Runtime delivered by [issue #2](https://github.com/ethankimm/rag/issues/2).
+The lifecycle decision is recorded in
+[`ADR 0015`](adr/0015-use-an-external-persistent-local-model-server.md).
 
 ## Persistent server commands
 
@@ -47,6 +45,9 @@ process on the configured port causes a failure that reports its PID and
 executable when the operating system exposes them. The launcher never adopts or
 terminates that process.
 
+The launcher prints when the server is starting, waiting for health, and ready.
+These status lines remain visible during a cold start.
+
 Shutdown sends `SIGTERM` only when the current PID, executable, and process start
 time match the recorded identity. It uses `SIGKILL` after a five-second grace
 period. Missing, malformed, stale, or PID-reused state is removed without
@@ -54,9 +55,16 @@ signaling a process.
 
 ## Configuration
 
+This section is the single documented source of truth for the shared setting
+names, defaults, and validation rules. `.env.example` provides copyable values
+for local setup.
+
 Export environment settings before the first runtime context is entered. The
 runtime caches one frozen `ModelConfig` on first use; changing the environment
-afterward requires a process restart. It does not load `.env` itself.
+afterward requires a process restart. The launcher also reads its configuration
+when its process starts. Run `make model-server-down` before changing any shared
+setting, then restart application processes; standard Make commands start the
+server again with the new contract. The runtime does not load `.env` itself.
 
 | Setting | Default |
 | --- | --- |
@@ -135,3 +143,14 @@ Missing executables or files fail during persistent server startup. Catalog,
 embedding, and reranking incompatibilities fail in the runtime test with the
 configured model contract in the error. Normal `make test-backend` runs exclude
 the `model_integration` marker and require no GGUF files or Model Server.
+
+## Access and ownership boundary
+
+The current product remains one local installation. Every document present in
+the local knowledge base is available to chat. The Local Model Runtime does not
+introduce user accounts, administrator roles, authentication, permissions, or
+shared knowledge-base management.
+
+PostgreSQL stores and OpenAI-compatible generation clients retain their current
+owners. The runtime owns only its local-model HTTP client, and Make owns only
+the repository-recorded Model Server process.

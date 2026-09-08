@@ -14,10 +14,14 @@ describe it.
   `docker-compose.yml`. Hybrid retrieval (dense cosine + full-text search, fused
   with RRF) is served by the store itself in one SQL query — there is no
   separate BM25 index or Python fuser.
-- **Embeddings**: local GGUF embedding model through `llama-cpp-python`.
+- **Local models**: embedding and reranking GGUF models served by a persistent,
+  externally owned Model Server. Application processes own only their validated
+  Local Model Runtime clients.
 - **Generation**: OpenAI-compatible chat completion through the OpenAI SDK.
 - **Source of truth for RAG ingestion**: `backend/rag-docs/`, with documents as
   markdown files.
+- **Access model**: one local installation. All locally available documents are
+  available to chat; there are no user or administrator roles.
 - **Frontend**: Astro, calling the FastAPI `/chat` endpoint during local
   development.
 - **Deployment target**: GCP for internal use; local Docker services remain
@@ -99,20 +103,33 @@ Run a manual RAG query smoke test:
 Direct `uv run python -m backend.rag` invocation requires PostgreSQL and the
 Model Server to be running already.
 
-Optional cross-encoder reranking (off by default). Download the reranker GGUF
-into `models/`, serve it, then set `RERANK_ENABLED=1`. Reranking pools over the
-whole (query, document) pair in one batch, so `-ub`/`-c` must cover the longest
-pair (the 512-token default 500s on long docs):
+The standard `make dev`, `make ingest`, `make eval`, and `make rag-smoke`
+commands start or reuse the persistent Model Server. Manage it explicitly with:
 
-    llama-server -m models/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 8192 -b 8192 -ub 8192 -ngl 99 --port 8080
+    make model-server-up
+    make model-server-down
+
+Startup reports server and embedding-model waits. Shutdown signals only the
+process identity recorded by this repository. An untracked process on the
+configured port fails startup and is never terminated automatically.
+
+`docs/local-model-runtime.md` is the canonical configuration and operations
+reference. Run `make model-server-down` before changing local model environment
+settings, then restart application processes. Standard Make commands start the
+server again with the new contract. The lifecycle decision is recorded in
+`docs/adr/0015-use-an-external-persistent-local-model-server.md`.
 
 Run the backend API:
 
     make dev
 
-Run the tests:
+Run the portable backend and frontend tests:
 
-    uv run pytest
+    make test
+
+Run the opt-in real GGUF runtime gate only on a model-capable machine:
+
+    make test-runtime
 
 Lint and format-check with Ruff:
 
@@ -121,9 +138,12 @@ Lint and format-check with Ruff:
 
 ## Testing
 
-- **pytest** — unit tests for pipeline logic, in `tests/`. Uses small temporary
-  fixtures plus smoke coverage over the local RAG components. Run with
-  `uv run pytest`.
+- **pytest** — unit tests for pipeline logic, in `tests/`. Normal backend tests
+  use deterministic HTTP adapters and require no GGUF files or Model Server.
+  Run with `make test-backend`.
+- **Real runtime gate** — `make test-runtime` validates configured GGUF
+  embedding and reranking through the production client contract. It leaves
+  the persistent Model Server running for reuse.
 
 Planned (do NOT install ahead of a step that explicitly needs them):
 
