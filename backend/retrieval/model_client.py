@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +33,22 @@ class RerankScore:
 
 
 DEFAULT_MODEL_CONFIG = ModelConfig()
+
+
+def model_ids_from_environment() -> tuple[str, str]:
+    """Load and validate the shared local model IDs."""
+    model_ids = (
+        os.environ.get("LOCAL_EMBEDDING_MODEL", DEFAULT_MODEL_CONFIG.embedding_model),
+        os.environ.get("LOCAL_RERANKING_MODEL", DEFAULT_MODEL_CONFIG.reranking_model),
+    )
+    for name, value in zip(
+        ("LOCAL_EMBEDDING_MODEL", "LOCAL_RERANKING_MODEL"),
+        model_ids,
+        strict=True,
+    ):
+        if not value.strip():
+            raise ValueError(f"{name} must be a nonempty model ID")
+    return model_ids
 
 
 def validate_embedding_vector(

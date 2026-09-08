@@ -19,7 +19,7 @@ from typing import Protocol
 
 import httpx
 
-from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG
+from backend.retrieval.model_client import model_ids_from_environment
 
 
 @dataclass(frozen=True)
@@ -71,14 +71,7 @@ class LauncherConfig:
             )
         models_dir = root / "backend" / "models"
         runtime_dir = root / ".runtime"
-        model_ids = (
-            os.environ.get(
-                "LOCAL_EMBEDDING_MODEL", DEFAULT_MODEL_CONFIG.embedding_model
-            ),
-            os.environ.get(
-                "LOCAL_RERANKING_MODEL", DEFAULT_MODEL_CONFIG.reranking_model
-            ),
-        )
+        model_ids = model_ids_from_environment()
         return cls(
             base_url=base_url.rstrip("/"),
             host=url.host,

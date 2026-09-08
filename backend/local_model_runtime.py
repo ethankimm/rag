@@ -15,6 +15,7 @@ from backend.retrieval.model_client import (
     DEFAULT_MODEL_CONFIG,
     ModelClient,
     ModelConfig,
+    model_ids_from_environment,
 )
 
 
@@ -43,25 +44,16 @@ def _load_config() -> ModelConfig:
             "LOCAL_EMBEDDING_DIMENSION must be a positive integer; "
             f"received {raw_dimension!r}"
         ) from error
+    embedding_model, reranking_model = model_ids_from_environment()
     config = ModelConfig(
         base_url=os.environ.get("LOCAL_MODEL_BASE_URL", "http://127.0.0.1:8080"),
-        embedding_model=os.environ.get(
-            "LOCAL_EMBEDDING_MODEL", DEFAULT_MODEL_CONFIG.embedding_model
-        ),
-        reranking_model=os.environ.get(
-            "LOCAL_RERANKING_MODEL", DEFAULT_MODEL_CONFIG.reranking_model
-        ),
+        embedding_model=embedding_model,
+        reranking_model=reranking_model,
         embedding_dimension=dimension,
     )
     url = httpx.URL(config.base_url)
     if url.scheme not in {"http", "https"} or not url.host:
         raise ValueError("LOCAL_MODEL_BASE_URL must be an absolute HTTP(S) URL")
-    for name, value in (
-        ("LOCAL_EMBEDDING_MODEL", config.embedding_model),
-        ("LOCAL_RERANKING_MODEL", config.reranking_model),
-    ):
-        if not value.strip():
-            raise ValueError(f"{name} must be a nonempty model ID")
     return config
 
 
