@@ -18,13 +18,13 @@ import numpy as np
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG, ModelClient
+from backend.local_model_runtime import local_model_runtime
+from backend.retrieval.model_client import ModelClient
 from backend.storage.pg_search_store import (
     CollectionManifest,
     PgSearchStore,
     SearchDocument,
 )
-from backend.utils.llama_server import ManagedLlamaServer
 
 # --- Configuration & Paths ---
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -248,8 +248,7 @@ def main() -> None:
     source_document_count, chunks = prepare_chunks(DOCS_DIR)
 
     with (
-        ManagedLlamaServer(models_dir=BACKEND_ROOT / "models", port=8080),
-        ModelClient(DEFAULT_MODEL_CONFIG) as model_client,
+        local_model_runtime() as model_client,
         PgSearchStore(
             embedding_dimension=model_client.config.embedding_dimension
         ) as store,

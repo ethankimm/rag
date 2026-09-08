@@ -49,12 +49,11 @@ components.
 
 ## Build The Vector Store
 
-Start PostgreSQL, then load, chunk, embed, and atomically replace the
-`markdown_docs` application collection:
+Start or reuse PostgreSQL and the persistent Model Server, then load, chunk,
+embed, and atomically replace the `markdown_docs` application collection:
 
 ```bash
-docker compose up -d
-uv run python -m backend.ingestion
+make ingest
 ```
 
 ## Start The Application
@@ -200,14 +199,13 @@ on every development or deployment machine. The tracked
 `backend/models/llama-models.ini` file supplies their llama.cpp model settings.
 
 The PostgreSQL image includes `pg_textsearch` 1.4.0 for native BM25 alongside
-pgvector. The managed llama.cpp router reads `backend/models/llama-models.ini`
+pgvector. The persistent Model Server reads `backend/models/llama-models.ini`
 so the embedding model keeps CLS pooling while rank pooling is applied only to
-the cross-encoder. Start Postgres, install the development dependencies, and run:
+the cross-encoder. Install the development dependencies, then run:
 
 ```bash
-docker compose up -d
 uv sync --extra dev
-uv run python -m backend.evaluation
+make eval
 ```
 
 To evaluate only the lexical arm—without starting llama.cpp, embedding queries,

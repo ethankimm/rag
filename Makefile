@@ -22,11 +22,11 @@ frontend-check:
 import-hf-docs:
 	uv run python -m backend.ingestion.hf_course_import
 
-ingest:
+ingest: model-server-up
 	PG_PORT=$(PG_PORT) docker compose up -d
 	PG_DSN=$(PG_DSN) uv run python -m backend.ingestion
 
-eval:
+eval: model-server-up
 	PG_PORT=$(PG_PORT) docker compose up -d
 	PG_DSN=$(PG_DSN) uv run python -m backend.evaluation
 

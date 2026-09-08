@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -10,6 +11,7 @@ import numpy as np
 import pytest
 from langchain_core.documents import Document
 
+from backend.ingestion import __main__ as ingestion
 from backend.ingestion.__main__ import (
     IngestionSummary,
     assign_chunk_ids,
@@ -210,3 +212,76 @@ def test_ingest_documents_runs_complete_pipeline(tmp_path: Path) -> None:
     assert summary.source_document_count == 1
     assert summary.chunk_count >= 1
     assert len(store.replacements) == 1
+
+
+@pytest.mark.parametrize("failure", [None, RuntimeError("index failed")])
+def test_main_uses_validated_runtime_and_closes_resources(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: RuntimeError | None,
+) -> None:
+    lifecycle: list[str] = []
+    chunks = [Document(page_content="content", metadata={"chunk_id": "chunk_1"})]
+    model_client = SimpleNamespace(
+        config=SimpleNamespace(
+            embedding_model="runtime-embedding",
+            embedding_dimension=384,
+        )
+    )
+    store = SimpleNamespace(collection_name="runtime_collection")
+
+    @contextmanager
+    def fake_local_model_runtime():
+        lifecycle.append("models started")
+        try:
+            yield model_client
+        finally:
+            lifecycle.append("models closed")
+
+    @contextmanager
+    def fake_search_store(*, embedding_dimension: int):
+        assert embedding_dimension == 384
+        lifecycle.append("store started")
+        try:
+            yield store
+        finally:
+            lifecycle.append("store closed")
+
+    def fake_index_chunks(
+        source_document_count: int,
+        received_chunks: list[Document],
+        received_client: object,
+        received_store: object,
+    ) -> IngestionSummary:
+        assert source_document_count == 1
+        assert received_chunks is chunks
+        assert received_client is model_client
+        assert received_store is store
+        lifecycle.append("batch started")
+        if failure is not None:
+            raise failure
+        return IngestionSummary(
+            source_document_count=1,
+            chunk_count=1,
+            collection_name="runtime_collection",
+            embedding_model="runtime-embedding",
+            embedding_dimension=384,
+        )
+
+    monkeypatch.setattr(ingestion, "prepare_chunks", lambda _path: (1, chunks))
+    monkeypatch.setattr(ingestion, "local_model_runtime", fake_local_model_runtime)
+    monkeypatch.setattr(ingestion, "PgSearchStore", fake_search_store)
+    monkeypatch.setattr(ingestion, "index_chunks", fake_index_chunks)
+
+    if failure is None:
+        ingestion.main()
+    else:
+        with pytest.raises(RuntimeError, match="index failed"):
+            ingestion.main()
+
+    assert lifecycle == [
+        "models started",
+        "store started",
+        "batch started",
+        "store closed",
+        "models closed",
+    ]

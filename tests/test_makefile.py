@@ -1,4 +1,4 @@
-"""Command-order tests for local interactive Make entry points."""
+"""Command-order tests for local Make entry points."""
 
 from __future__ import annotations
 
@@ -14,10 +14,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
     ("target", "application_command"),
     [
         ("dev", "uvicorn backend.api:app"),
+        ("ingest", "python -m backend.ingestion"),
+        ("eval", "python -m backend.evaluation"),
         ("rag-smoke", "python -m backend.rag"),
     ],
 )
-def test_interactive_target_starts_model_server_before_application(
+def test_application_target_starts_model_server_before_application(
     target: str,
     application_command: str,
 ) -> None:

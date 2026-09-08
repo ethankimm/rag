@@ -30,18 +30,13 @@ from backend.evaluation.beir_scifact import (  # noqa: E402
     run_hybrid_pipeline,
     run_lexical_pipeline,
 )
+from backend.local_model_runtime import local_model_runtime  # noqa: E402
 from backend.retrieval.hybrid_retriever import HybridRetriever  # noqa: E402
-from backend.retrieval.model_client import (  # noqa: E402
-    DEFAULT_MODEL_CONFIG,
-    ModelClient,
-)
 from backend.storage.pg_search_store import (  # noqa: E402
     BM25_B,
     BM25_K1,
-    DEFAULT_EMBEDDING_DIM,
     PgSearchStore,
 )
-from backend.utils.llama_server import ManagedLlamaServer  # noqa: E402
 
 
 def _get_git_commit() -> str:
@@ -97,8 +92,6 @@ def _report_and_save(
 def main() -> None:
     """Run the BEIR SciFact evaluation and output results to JSON."""
     args = _parse_args()
-    models_dir = REPO_ROOT / "backend" / "models"
-    models_preset = models_dir / "llama-models.ini"
     collection_name = args.collection_name or (
         DEFAULT_LEXICAL_COLLECTION_NAME
         if args.lexical_only
@@ -147,17 +140,11 @@ def main() -> None:
         )
         return
 
-    # llama-server router context supporting both embedding and reranking
     with (
-        ManagedLlamaServer(
-            models_dir=models_dir,
-            models_preset=models_preset,
-            port=8080,
-        ),
-        ModelClient(DEFAULT_MODEL_CONFIG) as model_client,
+        local_model_runtime() as model_client,
         PgSearchStore(
             collection_name=collection_name,
-            embedding_dimension=DEFAULT_EMBEDDING_DIM,
+            embedding_dimension=model_client.config.embedding_dimension,
             dsn=args.dsn,
         ) as vector_store,
     ):
