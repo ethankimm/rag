@@ -109,5 +109,28 @@ uv run ruff format --check backend tests
 Tests enter the public context manager, with a private client factory supplying
 real `ModelClient` instances backed by `httpx.MockTransport`. They replace only
 the external HTTP transport and clock; no GGUF files or running server are needed.
-Real-model verification and `make test-runtime` belong to the later launcher and
-integration work.
+
+## Real GGUF runtime gate
+
+Run the opt-in gate on a model-capable development machine:
+
+```sh
+make test-runtime
+```
+
+Prerequisites are `llama-server` on `PATH` and both configured GGUF files in
+`backend/models/`. The tracked `llama-models.ini` must expose the configured
+embedding and reranking model IDs. Environment overrides use the same settings
+listed above.
+
+The command starts or reuses the persistent repository-owned Model Server, then
+enters the same `local_model_runtime()` context used by production callers. It
+checks health and the model catalog, validates a real finite, nonzero embedding
+with the configured dimension, and validates one finite reranking score for each
+supplied document with complete, valid document indexes. The server remains
+running after the gate; use `make model-server-down` when finished.
+
+Missing executables or files fail during persistent server startup. Catalog,
+embedding, and reranking incompatibilities fail in the runtime test with the
+configured model contract in the error. Normal `make test-backend` runs exclude
+the `model_integration` marker and require no GGUF files or Model Server.

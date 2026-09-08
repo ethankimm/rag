@@ -154,8 +154,19 @@ make test-bm25
 ```
 
 The default suites mock network, OpenAI, local model, and database boundaries;
-they do not consume API credits. Set `RUN_MODEL_INTEGRATION=1` to include the
-slower local GGUF routing test.
+they do not consume API credits. Run the real local model gate separately on a
+machine with `llama-server` and both configured GGUF files:
+
+```bash
+make test-runtime
+make model-server-down
+```
+
+The gate starts or reuses the persistent Model Server and verifies health,
+configured model IDs, embedding dimensions and values, and reranking scores.
+It leaves the Model Server running for reuse. See
+[`docs/local-model-runtime.md`](docs/local-model-runtime.md#real-gguf-runtime-gate)
+for prerequisites and configuration.
 
 ## Full-Stack Course Smoke Test
 

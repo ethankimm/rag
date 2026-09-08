@@ -1,4 +1,4 @@
-.PHONY: app-dev dev frontend-dev frontend-build frontend-check import-hf-docs ingest eval rag-smoke model-server-up model-server-down test test-backend test-frontend test-bm25
+.PHONY: app-dev dev frontend-dev frontend-build frontend-check import-hf-docs ingest eval rag-smoke model-server-up model-server-down test test-backend test-frontend test-bm25 test-runtime
 
 PG_PORT ?= 5433
 PG_DSN ?= postgresql://rag:rag@localhost:$(PG_PORT)/rag
@@ -51,3 +51,6 @@ test-frontend:
 test-bm25:
 	PG_PORT=$(PG_PORT) docker compose up -d
 	PG_DSN=$(PG_DSN) REQUIRE_POSTGRES_TESTS=1 uv run pytest -m integration
+
+test-runtime: model-server-up
+	RUN_MODEL_INTEGRATION=1 uv run pytest -m model_integration tests/test_model_server_integration.py

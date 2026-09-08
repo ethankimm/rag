@@ -1,18 +1,13 @@
-"""Optional integration test for llama-server model routing."""
+"""Real-model gate for the persistent local Model Server."""
 
 from __future__ import annotations
 
+import math
 import os
-from pathlib import Path
 
-import httpx
 import pytest
 
-from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG
-from backend.utils.llama_server import ManagedLlamaServer
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = REPO_ROOT / "backend" / "models"
+from backend.local_model_runtime import local_model_runtime
 
 
 @pytest.mark.model_integration
@@ -20,45 +15,26 @@ MODELS_DIR = REPO_ROOT / "backend" / "models"
     os.environ.get("RUN_MODEL_INTEGRATION") != "1",
     reason="Set RUN_MODEL_INTEGRATION=1 to exercise local GGUF models",
 )
-def test_llama_server_routes_both_bge_models() -> None:
-    with (
-        ManagedLlamaServer(models_dir=MODELS_DIR, port=8080),
-        httpx.Client(base_url="http://127.0.0.1:8080", timeout=60.0) as client,
-    ):
-        models_response = client.get("/v1/models")
-        assert models_response.status_code == 200
-        available_models = {
-            model["id"] for model in models_response.json().get("data", [])
+def test_persistent_server_satisfies_runtime_contract() -> None:
+    documents = [
+        "Super-resolution enhances image detail.",
+        "Tokenization splits text into model inputs.",
+    ]
+
+    with local_model_runtime() as client:
+        client.check_health(timeout=5.0)
+        available_models = client.list_models(timeout=5.0)
+        required_models = {
+            client.config.embedding_model,
+            client.config.reranking_model,
         }
-        assert DEFAULT_MODEL_CONFIG.embedding_model in available_models
-        assert DEFAULT_MODEL_CONFIG.reranking_model in available_models
+        embedding = client.embed_query("How does tokenization work?")
+        scores = client.rerank("What is super-resolution?", documents)
 
-        embedding_response = client.post(
-            "/v1/embeddings",
-            json={
-                "model": DEFAULT_MODEL_CONFIG.embedding_model,
-                "input": "Testing model load",
-            },
-        )
-        assert embedding_response.status_code == 200
-
-        rerank_response = client.post(
-            "/rerank",
-            json={
-                "model": DEFAULT_MODEL_CONFIG.reranking_model,
-                "query": "What is super-resolution?",
-                "top_n": 1,
-                "documents": ["Super-resolution enhances image detail."],
-            },
-        )
-        if rerank_response.status_code == 404:
-            rerank_response = client.post(
-                "/v1/rerank",
-                json={
-                    "model": DEFAULT_MODEL_CONFIG.reranking_model,
-                    "query": "What is super-resolution?",
-                    "top_n": 1,
-                    "documents": ["Super-resolution enhances image detail."],
-                },
-            )
-        assert rerank_response.status_code == 200
+    assert required_models <= available_models
+    assert len(embedding) == client.config.embedding_dimension
+    assert all(math.isfinite(value) for value in embedding)
+    assert any(embedding)
+    assert len(scores) == len(documents)
+    assert {score.document_index for score in scores} == set(range(len(documents)))
+    assert all(math.isfinite(score.relevance_score) for score in scores)
