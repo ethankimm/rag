@@ -1,4 +1,4 @@
-.PHONY: app-dev dev frontend-dev frontend-build frontend-check import-hf-docs ingest eval test test-backend test-frontend test-bm25
+.PHONY: app-dev dev frontend-dev frontend-build frontend-check import-hf-docs ingest eval model-server-up model-server-down test test-backend test-frontend test-bm25
 
 PG_PORT ?= 5433
 PG_DSN ?= postgresql://rag:rag@localhost:$(PG_PORT)/rag
@@ -29,6 +29,12 @@ ingest:
 eval:
 	PG_PORT=$(PG_PORT) docker compose up -d
 	PG_DSN=$(PG_DSN) uv run python -m backend.evaluation
+
+model-server-up:
+	uv run python -m backend.utils.model_server_launcher up
+
+model-server-down:
+	uv run python -m backend.utils.model_server_launcher down
 
 test: test-backend test-frontend
 

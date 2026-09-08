@@ -66,6 +66,18 @@ and frontend together:
 make app-dev
 ```
 
+The local Model Server is a persistent repository-owned process. Start it once
+before application work and stop it when finished:
+
+```bash
+make model-server-up
+make model-server-down
+```
+
+Startup reuses only the live process recorded in `.runtime/`. It rejects an
+untracked process on the configured port without terminating it. Server output
+remains in `.runtime/model-server.log`, including after startup failure.
+
 The Astro development server sends browser requests to `/api/chat` and proxies
 them to FastAPI at `http://127.0.0.1:8000/chat`. This keeps the browser on one
 origin during local development. For separate processes, use the commands below.

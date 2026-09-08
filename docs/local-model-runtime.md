@@ -17,9 +17,36 @@ otherwise manages a Model Server. PostgreSQL and generation clients remain
 owned by their callers.
 
 This implements [issue #3](https://github.com/ethankimm/rag/issues/3).
-Production caller migration and persistent server launcher commands are later
-parts of [issue #2](https://github.com/ethankimm/rag/issues/2); existing entry
-points do not yet use this session.
+Persistent server launcher commands are provided by
+[issue #4](https://github.com/ethankimm/rag/issues/4). Production caller
+migration remains a later part of
+[issue #2](https://github.com/ethankimm/rag/issues/2); existing entry points do
+not yet use this session.
+
+## Persistent server commands
+
+Start and stop the repository-owned Model Server independently from application
+processes:
+
+```sh
+make model-server-up
+make model-server-down
+```
+
+The launcher stores verified process identity in `.runtime/model-server.json`
+and writes current-run server output to `.runtime/model-server.log`, replacing
+the previous run's log when it starts a new process. The prior log moves to
+`.runtime/model-server.previous.log`, so failed-start diagnostics survive one
+retry without unbounded growth across restarts. Startup reuses a live, matching
+process, clears stale state, and waits up to 30 seconds for health. An untracked
+process on the configured port causes a failure that reports its PID and
+executable when the operating system exposes them. The launcher never adopts or
+terminates that process.
+
+Shutdown sends `SIGTERM` only when the current PID, executable, and process start
+time match the recorded identity. It uses `SIGKILL` after a five-second grace
+period. Missing, malformed, stale, or PID-reused state is removed without
+signaling a process.
 
 ## Configuration
 
@@ -37,6 +64,11 @@ afterward requires a process restart. It does not load `.env` itself.
 The URL must be absolute HTTP(S), model IDs must be nonempty, and the dimension
 must be a positive integer. Callers use the yielded client's frozen `config`
 when they need the validated dimension.
+
+`local_model_runtime()` accepts HTTP or HTTPS endpoints. The local
+`model-server-up` launcher requires an explicit-port HTTP URL because it starts
+`llama-server` without TLS configuration. The launcher accepts only `localhost`,
+`127.0.0.1`, or `::1` to prevent accidental network exposure.
 
 ## Startup and errors
 
