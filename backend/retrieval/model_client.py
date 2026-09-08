@@ -43,10 +43,15 @@ def validate_embedding_vector(
     """Validate a model response before using it as a dense vector."""
     if not isinstance(raw_embedding, list):
         raise RuntimeError(f"{context} response is not a vector")
+    if any(
+        not isinstance(value, (int, float)) or isinstance(value, bool)
+        for value in raw_embedding
+    ):
+        raise RuntimeError(f"{context} response contains a non-numeric value")
 
     try:
         embedding = [float(value) for value in raw_embedding]
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise RuntimeError(
             f"{context} response contains a non-numeric value"
         ) from error
@@ -58,7 +63,7 @@ def validate_embedding_vector(
         )
     if not all(math.isfinite(value) for value in embedding):
         raise RuntimeError(f"{context} response contains a non-finite value")
-    if math.sqrt(sum(value * value for value in embedding)) <= 1e-12:
+    if not any(embedding):
         raise RuntimeError(
             f"{context} response is all zeros; check llama.cpp pooling settings"
         )
@@ -89,6 +94,24 @@ class ModelClient:
 
     def close(self) -> None:
         self._http.close()
+
+    def check_health(self, *, timeout: float) -> None:
+        """Require a successful health response within the supplied timeout."""
+        self._http.get("/health", timeout=timeout).raise_for_status()
+
+    def list_models(self, *, timeout: float) -> set[str]:
+        """Read model IDs, rejecting malformed catalogs."""
+        response = self._http.get("/v1/models", timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise ValueError("Model catalog must contain a 'data' list")
+        models: set[str] = set()
+        for model in payload["data"]:
+            if not isinstance(model, dict) or not isinstance(model.get("id"), str):
+                raise ValueError("Model catalog entries must contain a string 'id'")
+            models.add(model["id"])
+        return models
 
     def embed_query(self, query: str) -> list[float]:
         """Embed one query using the configured query transformation."""
@@ -122,7 +145,7 @@ class ModelClient:
         candidates = [
             document[: self.config.max_rerank_characters] for document in documents
         ]
-        payload = {
+        payload: dict[str, object] = {
             "model": self.config.reranking_model,
             "query": query,
             "top_n": len(candidates),
@@ -190,7 +213,9 @@ class ModelClient:
             indexes = [item["index"] for item in items]
         except (KeyError, TypeError) as error:
             raise RuntimeError("Embedding response has an invalid schema") from error
-        if indexes != list(range(len(inputs))):
+        if any(
+            not isinstance(index, int) or isinstance(index, bool) for index in indexes
+        ) or indexes != list(range(len(inputs))):
             raise RuntimeError(
                 f"Embedding server returned invalid indexes {indexes!r} "
                 f"for {len(inputs)} inputs"
