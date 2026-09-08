@@ -103,12 +103,19 @@ def config(tmp_path: Path) -> LauncherConfig:
     models_dir.mkdir(parents=True)
     preset = models_dir / "llama-models.ini"
     preset.write_text("version = 1\n", encoding="utf-8")
+    required_model_files = (
+        models_dir / "embedding.gguf",
+        models_dir / "reranking.gguf",
+    )
+    for model_file in required_model_files:
+        model_file.touch()
     return LauncherConfig(
         base_url="http://127.0.0.1:8080",
         host="127.0.0.1",
         port=8080,
         models_dir=models_dir,
         models_preset=preset,
+        required_model_files=required_model_files,
         state_path=tmp_path / ".runtime" / "model-server.json",
         log_path=tmp_path / ".runtime" / "model-server.log",
         readiness_timeout=1.0,
@@ -138,6 +145,18 @@ def test_launcher_configuration_rejects_non_loopback_bind(tmp_path, monkeypatch)
         LauncherConfig.from_environment(tmp_path)
 
 
+def test_launcher_configuration_uses_configured_model_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_EMBEDDING_MODEL", "custom-embedding")
+    monkeypatch.setenv("LOCAL_RERANKING_MODEL", "custom-reranking")
+
+    result = LauncherConfig.from_environment(tmp_path)
+
+    assert result.required_model_files == (
+        tmp_path / "backend" / "models" / "custom-embedding.gguf",
+        tmp_path / "backend" / "models" / "custom-reranking.gguf",
+    )
+
+
 def test_up_starts_model_server_and_reports_progress(config, capsys):
     system = FakeSystem(healthy=True)
 
@@ -163,6 +182,20 @@ def test_up_starts_model_server_and_reports_progress(config, capsys):
     assert "--reranking" not in command
 
 
+def test_up_reports_every_missing_required_model_file(config):
+    for model_file in config.required_model_files:
+        model_file.unlink()
+    system = FakeSystem(healthy=True)
+
+    with pytest.raises(FileNotFoundError) as captured:
+        ModelServerLauncher(config, system=system).up()
+
+    message = str(captured.value)
+    assert "Required GGUF model files not found" in message
+    assert all(str(path) in message for path in config.required_model_files)
+    assert system.spawned_commands == []
+
+
 def test_new_launch_preserves_previous_log(config):
     config.log_path.parent.mkdir(parents=True)
     config.log_path.write_text("failed startup details", encoding="utf-8")
@@ -185,6 +218,21 @@ def test_up_reuses_live_owned_process(config, capsys):
 
     assert not system.spawned_commands
     assert "reusing owned process 41" in capsys.readouterr().out.lower()
+
+
+def test_up_requires_model_files_before_reusing_owned_process(config):
+    process = ProcessIdentity(41, "llama-server", "same-start")
+    write_state(config, process)
+    config.required_model_files[0].unlink()
+    system = FakeSystem(
+        processes={process.pid: process}, port_pid=process.pid, healthy=True
+    )
+
+    with pytest.raises(FileNotFoundError, match="embedding.gguf"):
+        ModelServerLauncher(config, system=system).up()
+
+    assert not system.spawned_commands
+    assert system.signals == []
 
 
 def test_concurrent_up_commands_create_one_owned_process(config):

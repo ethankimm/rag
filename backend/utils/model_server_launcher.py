@@ -19,6 +19,8 @@ from typing import Protocol
 
 import httpx
 
+from backend.retrieval.model_client import DEFAULT_MODEL_CONFIG
+
 
 @dataclass(frozen=True)
 class ProcessIdentity:
@@ -47,6 +49,7 @@ class LauncherConfig:
     port: int
     models_dir: Path
     models_preset: Path
+    required_model_files: tuple[Path, ...]
     state_path: Path
     log_path: Path
     readiness_timeout: float = 30.0
@@ -68,12 +71,23 @@ class LauncherConfig:
             )
         models_dir = root / "backend" / "models"
         runtime_dir = root / ".runtime"
+        model_ids = (
+            os.environ.get(
+                "LOCAL_EMBEDDING_MODEL", DEFAULT_MODEL_CONFIG.embedding_model
+            ),
+            os.environ.get(
+                "LOCAL_RERANKING_MODEL", DEFAULT_MODEL_CONFIG.reranking_model
+            ),
+        )
         return cls(
             base_url=base_url.rstrip("/"),
             host=url.host,
             port=url.port,
             models_dir=models_dir,
             models_preset=models_dir / "llama-models.ini",
+            required_model_files=tuple(
+                models_dir / f"{model_id}.gguf" for model_id in model_ids
+            ),
             state_path=runtime_dir / "model-server.json",
             log_path=runtime_dir / "model-server.log",
         )
@@ -222,6 +236,7 @@ class ModelServerLauncher:
         if recorded:
             current = self.system.process_info(recorded.pid, timeout=1.0)
             if current == recorded:
+                self._validate_paths()
                 print(f"Model Server: reusing owned process {recorded.pid}")
                 self._announce_wait()
                 self._wait_until_ready(recorded, started_here=False)
@@ -405,6 +420,14 @@ class ModelServerLauncher:
         if not self.config.models_preset.is_file():
             raise FileNotFoundError(
                 f"Models preset not found at: {self.config.models_preset}"
+            )
+        missing_model_files = [
+            path for path in self.config.required_model_files if not path.is_file()
+        ]
+        if missing_model_files:
+            formatted_paths = ", ".join(str(path) for path in missing_model_files)
+            raise FileNotFoundError(
+                f"Required GGUF model files not found: {formatted_paths}"
             )
 
     def _command(self) -> list[str]:

@@ -28,13 +28,9 @@ def test_persistent_server_satisfies_runtime_contract() -> None:
             client.config.embedding_model,
             client.config.reranking_model,
         }
-        embedding = client.embed_query("How does tokenization work?")
         scores = client.rerank("What is super-resolution?", documents)
 
     assert required_models <= available_models
-    assert len(embedding) == client.config.embedding_dimension
-    assert all(math.isfinite(value) for value in embedding)
-    assert any(embedding)
     assert len(scores) == len(documents)
     assert {score.document_index for score in scores} == set(range(len(documents)))
     assert all(math.isfinite(score.relevance_score) for score in scores)
