@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-rag-app"
+version = "0.1.0"
+description = "Internal RAG over Git-backed markdown docs for GCP deployment (FastAPI + pgvector hybrid retrieval)."
+readme = "README.md"
+requires-python = ">=3.12"
+
+# Runtime dependencies. Kept intentionally minimal — add only what the current
+# step needs. Retrieval now runs entirely on Postgres + pgvector, so ChromaDB,
+# bm25s, and faiss are no longer runtime dependencies.
+dependencies = [
+    # Document model + chunking (backend/ingestion)
+    "chardet==7.6.0",
+    "langchain-text-splitters==1.1.2",
+    "langchain-core",
+    # Agentic retrieval graph (backend/agents/graph.py)
+    "langgraph",
+    # Local GGUF embeddings (backend/ingestion/embedder.py)
+    "llama-cpp-python",
+    # Temporary query embeddings for hybrid retrieval (swap for llama-server later)
+    "sentence-transformers",
+    # Postgres + pgvector hybrid store (backend/storage/pg_vector_store.py)
+    "numpy",
+    "pgvector",
+    "psycopg[binary]",
+    # LLM client (backend/rag.py)
+    "openai",
+    "python-dotenv",
+    # Reranker client — HTTP calls to llama-server /v1/rerank (backend/retrieval/reranker.py)
+    "httpx",
+    # Backend API server (backend/api.py)
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+# Dev/test-only tooling (not needed to run the app):
+#   .venv/bin/pip install -e ".[dev]"
+dev = [
+    "pytest==9.1.1",
+    # Retrieval benchmark harness (backend/evaluation); pulls torch + sentence-transformers.
+    "beir==2.2.0",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["backend/rag-docs"]
+
+[tool.ruff.lint]
+# Pyflakes (F) + pycodestyle (E) defaults, plus import sorting (I), pyupgrade
+# (UP), bugbear (B), flake8-simplify (SIM), and comprehension checks (C4).
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]

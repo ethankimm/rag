@@ -1,0 +1,56 @@
+.PHONY: app-dev dev frontend-dev frontend-build frontend-check import-hf-docs ingest eval rag-smoke model-server-up model-server-down test test-backend test-frontend test-bm25 test-runtime
+
+PG_PORT ?= 5433
+PG_DSN ?= postgresql://rag:rag@localhost:$(PG_PORT)/rag
+
+dev: model-server-up
+	PG_PORT=$(PG_PORT) docker compose up -d
+	PG_DSN=$(PG_DSN) uv run uvicorn backend.api:app --reload
+
+app-dev:
+	$(MAKE) -j2 dev frontend-dev
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
+
+frontend-check:
+	cd frontend && npm run check
+
+import-hf-docs:
+	uv run python -m backend.ingestion.hf_course_import
+
+ingest: model-server-up
+	PG_PORT=$(PG_PORT) docker compose up -d
+	PG_DSN=$(PG_DSN) uv run python -m backend.ingestion
+
+eval: model-server-up
+	PG_PORT=$(PG_PORT) docker compose up -d
+	PG_DSN=$(PG_DSN) uv run python -m backend.evaluation
+
+rag-smoke: model-server-up
+	PG_PORT=$(PG_PORT) docker compose up -d
+	PG_DSN=$(PG_DSN) uv run python -m backend.rag
+
+model-server-up:
+	uv run python -m backend.utils.model_server_launcher up
+
+model-server-down:
+	uv run python -m backend.utils.model_server_launcher down
+
+test: test-backend test-frontend
+
+test-backend:
+	uv run pytest -m "not integration and not model_integration"
+
+test-frontend:
+	cd frontend && npm test
+
+test-bm25:
+	PG_PORT=$(PG_PORT) docker compose up -d
+	PG_DSN=$(PG_DSN) REQUIRE_POSTGRES_TESTS=1 uv run pytest -m integration
+
+test-runtime: model-server-up
+	RUN_MODEL_INTEGRATION=1 uv run pytest -m model_integration tests/test_model_server_integration.py
