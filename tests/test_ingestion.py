@@ -214,10 +214,10 @@ def test_ingest_documents_runs_complete_pipeline(tmp_path: Path) -> None:
     assert len(store.replacements) == 1
 
 
-@pytest.mark.parametrize("failure", [None, RuntimeError("index failed")])
+@pytest.mark.parametrize("index_failure", [None, RuntimeError("index failed")])
 def test_main_uses_validated_runtime_and_closes_resources(
     monkeypatch: pytest.MonkeyPatch,
-    failure: RuntimeError | None,
+    index_failure: RuntimeError | None,
 ) -> None:
     lifecycle: list[str] = []
     chunks = [Document(page_content="content", metadata={"chunk_id": "chunk_1"})]
@@ -257,8 +257,8 @@ def test_main_uses_validated_runtime_and_closes_resources(
         assert received_client is model_client
         assert received_store is store
         lifecycle.append("batch started")
-        if failure is not None:
-            raise failure
+        if index_failure is not None:
+            raise index_failure
         return IngestionSummary(
             source_document_count=1,
             chunk_count=1,
@@ -267,12 +267,16 @@ def test_main_uses_validated_runtime_and_closes_resources(
             embedding_dimension=384,
         )
 
-    monkeypatch.setattr(ingestion, "prepare_chunks", lambda _path: (1, chunks))
+    def fake_prepare_chunks(_path: Path) -> tuple[int, list[Document]]:
+        lifecycle.append("source loaded")
+        return 1, chunks
+
+    monkeypatch.setattr(ingestion, "prepare_chunks", fake_prepare_chunks)
     monkeypatch.setattr(ingestion, "local_model_runtime", fake_local_model_runtime)
     monkeypatch.setattr(ingestion, "PgSearchStore", fake_search_store)
     monkeypatch.setattr(ingestion, "index_chunks", fake_index_chunks)
 
-    if failure is None:
+    if index_failure is None:
         ingestion.main()
     else:
         with pytest.raises(RuntimeError, match="index failed"):
@@ -281,6 +285,7 @@ def test_main_uses_validated_runtime_and_closes_resources(
     assert lifecycle == [
         "models started",
         "store started",
+        "source loaded",
         "batch started",
         "store closed",
         "models closed",

@@ -71,10 +71,10 @@ def test_lexical_builder_failure_is_closed_by_caller() -> None:
     assert store.closed
 
 
-@pytest.mark.parametrize("failure", [None, RuntimeError("evaluation failed")])
+@pytest.mark.parametrize("batch_failure", [None, RuntimeError("evaluation failed")])
 def test_hybrid_main_uses_validated_runtime_and_closes_resources(
     monkeypatch: pytest.MonkeyPatch,
-    failure: RuntimeError | None,
+    batch_failure: RuntimeError | None,
 ) -> None:
     lifecycle: list[str] = []
     model_client = SimpleNamespace(
@@ -132,14 +132,24 @@ def test_hybrid_main_uses_validated_runtime_and_closes_resources(
         assert received_store is store
         assert not rebuild
         lifecycle.append("batch started")
-        if failure is not None:
-            raise failure
+        if batch_failure is not None:
+            raise batch_failure
+
+    def fake_load_scifact(
+        _path: Path,
+    ) -> tuple[
+        dict[str, dict[str, str]],
+        dict[str, str],
+        dict[str, dict[str, int]],
+    ]:
+        lifecycle.append("source loaded")
+        return {"1": {}}, {"q1": "query"}, {"q1": {"1": 1}}
 
     monkeypatch.setattr(evaluation, "_parse_args", lambda: args)
     monkeypatch.setattr(
         evaluation,
         "load_scifact",
-        lambda _path: ({"1": {}}, {"q1": "query"}, {"q1": {"1": 1}}),
+        fake_load_scifact,
     )
     monkeypatch.setattr(evaluation, "corpus_to_documents", lambda _corpus: documents)
     monkeypatch.setattr(evaluation, "local_model_runtime", fake_local_model_runtime)
@@ -161,7 +171,7 @@ def test_hybrid_main_uses_validated_runtime_and_closes_resources(
     monkeypatch.setattr(evaluation, "evaluate", lambda *_args: {"Accuracy@10": 1.0})
     monkeypatch.setattr(evaluation, "_report_and_save", lambda *_args, **_kwargs: None)
 
-    if failure is None:
+    if batch_failure is None:
         evaluation.main()
     else:
         with pytest.raises(RuntimeError, match="evaluation failed"):
@@ -170,6 +180,7 @@ def test_hybrid_main_uses_validated_runtime_and_closes_resources(
     assert lifecycle == [
         "models started",
         "store started",
+        "source loaded",
         "batch started",
         "store closed",
         "models closed",

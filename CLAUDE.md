@@ -87,13 +87,10 @@ Setup (one time). Dependencies are declared in `pyproject.toml`:
 
     uv sync --extra dev
 
-Start the local Postgres + pgvector store:
+Start the local Model Server and Postgres, then load and index the markdown
+corpus:
 
-    docker compose up -d
-
-Load and index the markdown corpus:
-
-    uv run python -m backend.ingestion
+    make ingest
 
 Run a manual RAG query smoke test:
 

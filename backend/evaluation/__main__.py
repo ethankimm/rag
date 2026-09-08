@@ -98,12 +98,11 @@ def main() -> None:
         else DEFAULT_COLLECTION_NAME
     )
 
-    print("Loading BEIR SciFact test split...")
-    corpus, queries, qrels = load_scifact(args.data_root)
-    print(f"Loaded {len(corpus)} corpus documents and {len(queries)} test queries")
-    documents = corpus_to_documents(corpus)
-
     if args.lexical_only:
+        print("Loading BEIR SciFact test split...")
+        corpus, queries, qrels = load_scifact(args.data_root)
+        print(f"Loaded {len(corpus)} corpus documents and {len(queries)} test queries")
+        documents = corpus_to_documents(corpus)
         print("Building native pg_textsearch BM25 index (lexical only)...")
         with PgSearchStore(
             collection_name=collection_name,
@@ -148,6 +147,10 @@ def main() -> None:
             dsn=args.dsn,
         ) as vector_store,
     ):
+        print("Loading BEIR SciFact test split...")
+        corpus, queries, qrels = load_scifact(args.data_root)
+        print(f"Loaded {len(corpus)} corpus documents and {len(queries)} test queries")
+        documents = corpus_to_documents(corpus)
         print("Building pgvector + pg_textsearch hybrid index...")
         build_pg_index(
             documents,

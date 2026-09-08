@@ -244,15 +244,14 @@ def ingest_documents(
 # --- Orchestration ---
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    LOGGER.info("Loading documents from %s", DOCS_DIR)
-    source_document_count, chunks = prepare_chunks(DOCS_DIR)
-
     with (
         local_model_runtime() as model_client,
         PgSearchStore(
             embedding_dimension=model_client.config.embedding_dimension
         ) as store,
     ):
+        LOGGER.info("Loading documents from %s", DOCS_DIR)
+        source_document_count, chunks = prepare_chunks(DOCS_DIR)
         summary = index_chunks(
             source_document_count,
             chunks,
